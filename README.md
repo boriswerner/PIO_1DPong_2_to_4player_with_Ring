@@ -5,4 +5,5 @@ Based on modified version: https://github.com/Andymann/1D-Pong
 
 
 History:
-Converted to PlatformIO project in VSCode
+- Implemented 4 Player mode (not tested yet!)
+- Converted to PlatformIO project in VSCode
