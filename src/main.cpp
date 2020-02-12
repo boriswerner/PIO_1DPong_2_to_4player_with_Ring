@@ -1,16 +1,16 @@
 #include <Adafruit_NeoPixel.h>
 
 
-#define PIXELS_PER_STRIP 21
-#define PIXELS_LED_RING 8
-#define SPEEDUP 100
+#define PIXELS_PER_STRIP 17
+#define PIXELS_LED_RING 3
+#define SPEEDUP 90
 #define LED_STRIP_1_PIN 2
 #define LED_STRIP_2_PIN 4
 #define LED_STRIP_3_PIN 6
 #define LED_STRIP_4_PIN 8
 #define LED_RING_PIN 10
 
-#define PIEZO_PIN = 11
+#define BUZZER_PIN 11
 
 #define BUTTON_1_PIN 3
 #define BUTTON_2_PIN 5
@@ -19,10 +19,10 @@
 
 #define DEBUG
 #define INITIALSPEED 13
-#define INITIAL_LIFES 5
+#define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
 
-#define PLAYERZONE PIXELS_PER_STRIP-8
+#define PLAYERZONE PIXELS_PER_STRIP-7
 //------------------------
 // Structures
 //------------------------
@@ -139,9 +139,11 @@ void setAllTo(Adafruit_NeoPixel strip, uint32_t color) {
 
 void colorWipe(Adafruit_NeoPixel strip, uint32_t c, uint8_t wait) {
   for (uint16_t i = 0; i < strip.numPixels(); i++) {
+    tone(BUZZER_PIN, 200 + (i*100));
     strip.setPixelColor(i, c);
     strip.show();
     delay(wait);
+    noTone(BUZZER_PIN);
   }
 }
 
@@ -167,9 +169,11 @@ void colorFadeInOut(Adafruit_NeoPixel strip, byte red, byte green, byte blue){
 
 void drawPointLossAnimation(Player player)
 {
+  tone(BUZZER_PIN, 250);
   setAllTo(player.strip, player.strip.Color(255, 255, 255));
   delay(200);
   setAllTo(player.strip, player.strip.Color(0, 0, 0));
+  noTone(BUZZER_PIN);
 }
 
 //------------------------
@@ -264,7 +268,7 @@ void drawGame()
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
     setAllTo(players[i].strip, players[i].strip.Color(0, 0, 0));
     renderPlayer(&players[i]);
-    players[i].strip.setPixelColor(PLAYERZONE, 50, 50, 50);
+    players[i].strip.setPixelColor(PLAYERZONE, players[i].color.red/10, players[i].color.green/10, players[i].color.blue/10);
     players[i].strip.show();
   }
   
@@ -291,6 +295,7 @@ void updateBall(unsigned int td) {
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       // The ball can only be returned by pushing the button down in the players zone 
     if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<PLAYERZONE && players[i].button.down) {
+      tone(BUZZER_PIN, 1000);
       ball.speed = SPEEDUP / ball.position ;
       nextAlivePlayer = getNextAlivePlayer(i);
       ball.direction_from = players[i].side;
@@ -358,6 +363,7 @@ void loop() {
     processInput();
     if (!quit)
     {
+      noTone(BUZZER_PIN);
       updateBall(td);
       drawGame();
     }
