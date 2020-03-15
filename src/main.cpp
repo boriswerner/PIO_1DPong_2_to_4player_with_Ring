@@ -33,6 +33,34 @@ side_type sides[5] = {
   LEFT, UP, RIGHT, DOWN, MIDDLE
 };
 
+uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
+  { //LEFT to
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT
+    { 5, 10,11,12,13,14, 0, 0, 0, 0, 0, 0, 0, 0}, //UP
+    { 9, 10,11,12,13,14,15, 0, 1, 2, 0, 0, 0, 0}, //RIGHT
+    {13, 10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6}, //DOWN
+  },
+  { //UP to
+    {13, 14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10}, //LEFT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //UP
+    { 5, 14,15, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT
+    { 9, 14,15, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0}, //DOWN
+  },
+  { //RIGHT to
+    { 9,  2, 3, 4, 5, 6, 7, 8, 9,10, 0, 0, 0, 0}, //LEFT
+    {13,  2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14}, //UP
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT
+    { 5,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN
+  },
+  { //DOWN to
+    { 5,  6, 7, 8, 9,10, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT
+    { 9,  6, 7, 8, 9,10,11,12,13,14, 0, 0, 0, 0}, //UP
+    {13,  6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2}, //RIGHT
+    { 0,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN
+  }
+};
+
+
 struct Button {
   int pin;
   bool down;    // button has been released just now
@@ -89,12 +117,12 @@ Player players[4] = {
     .side = LEFT, 
     .button = (Button) {.pin = BUTTON_1_PIN}
   },
-  { .color = Color{255,0,0,led_ring.Color(255,0,0)}, 
+  { .color = Color{0,255,0,led_ring.Color(0,255,0)}, 
     .lifes = 0, 
     .side = UP, 
     .button = (Button) {.pin = BUTTON_2_PIN}
   },
-  { .color = Color{0,255,0,led_ring.Color(0,255,0)}, 
+  { .color = Color{255,0,0,led_ring.Color(255,0,0)}, 
     .lifes = 0, 
     .side = RIGHT, 
     .button = (Button) {.pin = BUTTON_3_PIN}
@@ -210,7 +238,12 @@ void renderPlayer(Player *p) {
 }
 
 void renderBall(Ball ball) {
-  ledObjects[ball.currentLEDObject].setPixelColor((ball.position), ball.color.RGBcolor);
+  if(ball.currentLEDObject == MIDDLE) {
+    ledObjects[ball.currentLEDObject].setPixelColor(ledRingWays[ball.direction_from][ball.direction_to][(byte)(ball.position)]
+      , ball.color.red/50, ball.color.green/50, ball.color.blue/50);
+  } else {
+    ledObjects[ball.currentLEDObject].setPixelColor(ball.position, ball.color.RGBcolor);
+  }
   ledObjects[ball.currentLEDObject].show();
 }
 
@@ -286,13 +319,13 @@ void loseLife() {
 
 void drawGame()
 {
+  setAllTo(MIDDLE, led_ring.Color(0, 0, 0));
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
     setAllTo(players[i].side, led_ring.Color(0, 0, 0));
     renderPlayer(&players[i]);
     ledObjects[players[i].side].setPixelColor(PLAYERZONE, players[i].color.red/10, players[i].color.green/10, players[i].color.blue/10);
     ledObjects[players[i].side].show();
   }
-  
   renderBall(ball);
 
 }
@@ -316,7 +349,7 @@ void updateBall(unsigned int td) {
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       // The ball can only be returned by pushing the button down in the players zone 
     if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
-      tone(BUZZER_PIN, 1000);
+      tone(BUZZER_PIN, 500);
       ball.speed = SPEEDUP / ball.position ;
       nextAlivePlayer = getNextAlivePlayer(players[i].side);
       ball.direction_from = players[i].side;
@@ -330,10 +363,19 @@ void updateBall(unsigned int td) {
   
   if(ball.currentLEDObject==ball.direction_from) { //ball is on the way back to the middle
     ball.position = ball.position + moveBy;
-    if(ball.position > PIXELS_PER_STRIP) {
-      ledObjects[ball.currentLEDObject].setPixelColor((ball.position), led_ring.Color(0,0,0));
+    if(ball.position > PIXELS_PER_STRIP) { // ball needs to go to middle ring
+      ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of old strip to black
+      //set ball position on middle ring
+      ball.currentLEDObject = MIDDLE;
+      ball.position = 1 - (PIXELS_PER_STRIP-ball.position);
+      ball.position = ball.position + moveBy;
+    }
+  } else if(ball.currentLEDObject == MIDDLE) {
+    ball.position = ball.position + moveBy;
+    if(ball.position > ledRingWays[ball.direction_from][ball.direction_to][0]+1) { //ball goes to strip of to-direction
+      ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of LED ring to black
       ball.currentLEDObject = ball.direction_to;
-      ball.position = ball.position - moveBy;
+      ball.position = PIXELS_PER_STRIP - (ball.position - ledRingWays[ball.direction_from][ball.direction_to][0]) - moveBy;
     }
   } else { //ball is already on new LED object, move towards playerzone
     ball.position = ball.position - moveBy;
@@ -366,7 +408,7 @@ void setup() {
   }
 //initialize LED ring
   led_ring.begin();
-  led_ring.setBrightness(1);
+  led_ring.setBrightness(15);
   led_ring.show();
   setAllTo(MIDDLE, led_ring.Color(0, 0, 0)); //necessary?
 }
