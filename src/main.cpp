@@ -212,18 +212,18 @@ void drawPointLossAnimation(Player player)
 side_type getNextAlivePlayer(side_type last) {
   //byte next = last==(sizeof(players) / sizeof(players[0])-1) ? last+1: 0;
   byte next = sides[last+1] == MIDDLE ? LEFT: sides[last+1];
-  Serial.print("LoopCheck nextAlivePlayer: ");
-  Serial.println(next);
+  // Serial.print("LoopCheck nextAlivePlayer: ");
+  // Serial.println(next);
   do {
     if(players[next].lifes > 0) {
-      Serial.print("nextAlivePlayer: ");
-      Serial.println(next);
+      // Serial.print("nextAlivePlayer: ");
+      // Serial.println(next);
       return sides[next];
     } else {
       // next = last==(sizeof(players) / sizeof(players[0])) ? last+1: 0;
       next = sides[next+1] == MIDDLE ? LEFT: sides[next+1];
-      Serial.print("LoopCheck nextAlivePlayer: ");
-      Serial.println(next);
+      // Serial.print("LoopCheck nextAlivePlayer: ");
+      // Serial.println(next);
     }
   } while (next != last);
   return sides[4];
@@ -290,9 +290,15 @@ void processInput() {
 // player lost a life
 void loseLife() {
   players[ball.direction_to].lifes = players[ball.direction_to].lifes - 1; // reduce lifes of player
+  Serial.print("Life lost: Player ");
+  Serial.println(ball.direction_to);
   if (players[ball.direction_to].lifes == 0) { // if the current player lost his last life
+    Serial.print("Last life lost: Player ");
+    Serial.println(ball.direction_to);
     alivePlayers = alivePlayers-1; // reduce number of players
     if(alivePlayers == 1) { // is only one player left? then reset all players lifes
+      Serial.print("Game won: Player ");
+      Serial.println(ball.direction_from);
       quit = true;
       alivePlayers = 0;
       players[ball.direction_from].lifes = 0;
@@ -302,19 +308,24 @@ void loseLife() {
         setAllTo(players[i].side, led_ring.Color(0,0,0));
       }
 
-    } else {
+    } else { //one player is out but more than one is left
       colorWipe(players[ball.direction_to].side, players[ball.direction_from].color.RGBcolor , 100);
       setAllTo(players[ball.direction_to].side, led_ring.Color(0,0,0));
     }
-  } else {
+  } else { //player lost one life but is still in 
     drawPointLossAnimation(players[ball.direction_to]);
     ball.direction_from = ball.direction_to; // if the player has lifes left, than he starts the ball, otherwise the player that shot him out starts the ball
   }
+  Serial.print("Start side: Player ");
+  Serial.println(ball.direction_from);
   nextAlivePlayer = getNextAlivePlayer(ball.direction_from);
-  ball.direction_to = players[nextAlivePlayer].side;
-  ball.currentLEDObject = players[ball.direction_from].side;
-  ball.position = 0; //starting position is last pixel
+  ball.direction_to = nextAlivePlayer;
+  Serial.print("Target side: Player ");
+  Serial.println(ball.direction_to);
+  ball.currentLEDObject = ball.direction_from;
+  ball.position = PLAYERZONE; //starting position is playerzone
   ball.speed = INITIALSPEED;
+  lastRefreshTime = 0;
 }
 
 void drawGame()
@@ -354,14 +365,19 @@ void updateBall(unsigned int td) {
       nextAlivePlayer = getNextAlivePlayer(players[i].side);
       ball.direction_from = players[i].side;
       ball.direction_to = players[nextAlivePlayer].side;
+      Serial.print("Returned from : ");
+      Serial.print(ball.direction_from);
+      Serial.print(" to: ");
+      Serial.println(ball.direction_to);
     }
   }
-  Serial.print("Ball Position: ");
-  Serial.print(sides[ball.currentLEDObject]);
-  Serial.print(" - ");
-  Serial.println(ball.position);
+  // Serial.print("Ball Position: ");
+  // Serial.print(sides[ball.currentLEDObject]);
+  // Serial.print(" - ");
+  // Serial.println(ball.position);
   
   if(ball.currentLEDObject==ball.direction_from) { //ball is on the way back to the middle
+    Serial.print("back to the middle"); Serial.println(ball.position);
     ball.position = ball.position + moveBy;
     if(ball.position > PIXELS_PER_STRIP) { // ball needs to go to middle ring
       ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of old strip to black
@@ -371,6 +387,7 @@ void updateBall(unsigned int td) {
       ball.position = ball.position + moveBy;
     }
   } else if(ball.currentLEDObject == MIDDLE) {
+    Serial.println("ball on middle"); Serial.println(ball.position);
     ball.position = ball.position + moveBy;
     if(ball.position > ledRingWays[ball.direction_from][ball.direction_to][0]+1) { //ball goes to strip of to-direction
       ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of LED ring to black
@@ -378,6 +395,7 @@ void updateBall(unsigned int td) {
       ball.position = PIXELS_PER_STRIP - (ball.position - ledRingWays[ball.direction_from][ball.direction_to][0]) - moveBy;
     }
   } else { //ball is already on new LED object, move towards playerzone
+    Serial.println("ball on target"); Serial.println(ball.position);
     ball.position = ball.position - moveBy;
     if (ball.position <= 0 ) //ball got over the last pixel -->lose life
     {
