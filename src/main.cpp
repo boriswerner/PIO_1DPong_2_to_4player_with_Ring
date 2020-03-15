@@ -35,28 +35,28 @@ side_type sides[5] = {
 
 uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
   { //LEFT to
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,10}, //LEFT
     { 5, 10,11,12,13,14, 0, 0, 0, 0, 0, 0, 0, 0}, //UP
     { 9, 10,11,12,13,14,15, 0, 1, 2, 0, 0, 0, 0}, //RIGHT
     {13, 10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6}, //DOWN
   },
   { //UP to
     {13, 14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10}, //LEFT
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //UP
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,14}, //UP
     { 5, 14,15, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT
     { 9, 14,15, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0}, //DOWN
   },
   { //RIGHT to
     { 9,  2, 3, 4, 5, 6, 7, 8, 9,10, 0, 0, 0, 0}, //LEFT
     {13,  2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14}, //UP
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}, //RIGHT
     { 5,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN
   },
   { //DOWN to
     { 5,  6, 7, 8, 9,10, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT
     { 9,  6, 7, 8, 9,10,11,12,13,14, 0, 0, 0, 0}, //UP
     {13,  6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2}, //RIGHT
-    { 0,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN
+    { 0,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 6}, //DOWN
   }
 };
 
@@ -97,6 +97,8 @@ struct Ball {
 //------------------------
 
 bool quit = true;
+bool isRestartBall = true;
+int8_t restartMove = -1;
 
 side_type nextAlivePlayer;
 byte alivePlayers = 0;
@@ -135,9 +137,9 @@ Player players[4] = {
 };
 
 Ball ball = {
-  .color = Color{255,255,255,led_ring.Color(255,255,255)}, 
+  .color = Color{100,100,100,led_ring.Color(100,100,100)}, 
   .currentLEDObject = MIDDLE,
-  .position = 0,
+  .position = 5,
   .direction_from = MIDDLE,
   .direction_to = MIDDLE,
   .speed = INITIALSPEED
@@ -176,31 +178,12 @@ void colorWipe(int ledNumber, uint32_t c, uint8_t wait) {
   }
 }
 
-// Fade color in and out
-// Source (FadeInOut): https://www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/#LEDStripEffectFadeInandFadeOutYourownColors
-void colorFadeInOut(int ledNumber, byte red, byte green, byte blue){
-  float r, g, b;
-     
-  for(int k = 0; k < 256; k=k+1) {
-    r = (k/256.0)*red;
-    g = (k/256.0)*green;
-    b = (k/256.0)*blue;
-    setAllTo(ledNumber, ledObjects[ledNumber].Color(r, g, b));
-  }
-     
-  for(int k = 255; k >= 0; k=k-2) {
-    r = (k/256.0)*red;
-    g = (k/256.0)*green;
-    b = (k/256.0)*blue;
-    setAllTo(ledNumber, ledObjects[ledNumber].Color(r, g, b));
-  }
-}
 
 void drawPointLossAnimation(Player player)
 {
   tone(BUZZER_PIN, 250);
-  setAllTo(player.side, led_ring.Color(255, 255, 255));
-  delay(200);
+  setAllTo(player.side, led_ring.Color(10, 10, 10));
+  delay(100);
   setAllTo(player.side, led_ring.Color(0, 0, 0));
   noTone(BUZZER_PIN);
 }
@@ -302,14 +285,14 @@ void loseLife() {
       quit = true;
       alivePlayers = 0;
       players[ball.direction_from].lifes = 0;
-      colorWipe(players[ball.direction_from].side, players[ball.direction_from].color.RGBcolor , 200);  
+      colorWipe(players[ball.direction_from].side, players[ball.direction_from].color.RGBcolor , 100);  
       // reset all strips to black after each game
       for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
         setAllTo(players[i].side, led_ring.Color(0,0,0));
       }
 
     } else { //one player is out but more than one is left
-      colorWipe(players[ball.direction_to].side, players[ball.direction_from].color.RGBcolor , 100);
+      colorWipe(players[ball.direction_to].side, players[ball.direction_from].color.RGBcolor , 20);
       setAllTo(players[ball.direction_to].side, led_ring.Color(0,0,0));
     }
   } else { //player lost one life but is still in 
@@ -325,6 +308,8 @@ void loseLife() {
   ball.currentLEDObject = ball.direction_from;
   ball.position = PLAYERZONE; //starting position is playerzone
   ball.speed = INITIALSPEED;
+  isRestartBall = true;
+  restartMove = INITIALSPEED;
   lastRefreshTime = 0;
 }
 
@@ -346,63 +331,91 @@ void drawStandby()
   if (players[LEFT].button.isPressed || players[UP].button.isPressed || players[RIGHT].button.isPressed || players[DOWN].button.isPressed) {
     for(byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       if(players[i].button.isPressed) {
-        colorFadeInOut(players[i].side, players[i].color.red, players[i].color.green, players[i].color.blue);
+        ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13]
+        , players[i].color.red/100, players[i].color.green/100, players[i].color.blue/100);
+        ledObjects[MIDDLE].show();
+      } else {
+        ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13], 0,0,0);
+        ledObjects[MIDDLE].show();
       }
     }
   } else {
-    colorFadeInOut(MIDDLE, random(0, 10), random(0, 10), random(0, 10)); 
+    for(byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13], 0,0,0);
+      ledObjects[MIDDLE].show();
+    }
   }
 }
 
 void updateBall(unsigned int td) {
-  float moveBy = ball.speed * (td / (float) 1000);
-  
-  for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
-      // The ball can only be returned by pushing the button down in the players zone 
-    if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
-      tone(BUZZER_PIN, 500);
-      ball.speed = SPEEDUP / ball.position ;
-      nextAlivePlayer = getNextAlivePlayer(players[i].side);
-      ball.direction_from = players[i].side;
-      ball.direction_to = players[nextAlivePlayer].side;
-      Serial.print("Returned from : ");
-      Serial.print(ball.direction_from);
-      Serial.print(" to: ");
-      Serial.println(ball.direction_to);
+  if(isRestartBall) { //on restarting the ball the ball moves in the player zone for initial speed
+    float moveBy = INITIALSPEED * (td / (float) 1000);
+    for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+        // The ball can only be started by pushing the button in the players zone 
+      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
+        tone(BUZZER_PIN, 500);
+        ball.speed = SPEEDUP / abs(ball.position) ;
+        isRestartBall = false;
+      }
     }
-  }
-  // Serial.print("Ball Position: ");
-  // Serial.print(sides[ball.currentLEDObject]);
-  // Serial.print(" - ");
-  // Serial.println(ball.position);
-  
-  if(ball.currentLEDObject==ball.direction_from) { //ball is on the way back to the middle
-    Serial.print("back to the middle"); Serial.println(ball.position);
-    ball.position = ball.position + moveBy;
-    if(ball.position > PIXELS_PER_STRIP) { // ball needs to go to middle ring
-      ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of old strip to black
-      //set ball position on middle ring
-      ball.currentLEDObject = MIDDLE;
-      ball.position = 1 - (PIXELS_PER_STRIP-ball.position);
+    //move ball in players zone
+    ball.position = ball.position + (moveBy * restartMove);
+    if (ball.position <= 0 ) {//ball got out of player zone switch direction
+      restartMove = 1;
       ball.position = ball.position + moveBy;
+    } else if (ball.position >= PLAYERZONE) {
+      restartMove = -1;
+      ball.position = ball.position - moveBy;
     }
-  } else if(ball.currentLEDObject == MIDDLE) {
-    Serial.println("ball on middle"); Serial.println(ball.position);
-    ball.position = ball.position + moveBy;
-    if(ball.position > ledRingWays[ball.direction_from][ball.direction_to][0]+1) { //ball goes to strip of to-direction
-      ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of LED ring to black
-      ball.currentLEDObject = ball.direction_to;
-      ball.position = PIXELS_PER_STRIP - (ball.position - ledRingWays[ball.direction_from][ball.direction_to][0]) - moveBy;
+
+  } else {
+    float moveBy = ball.speed * (td / (float) 1000);
+    for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+        // The ball can only be returned by pushing the button in the players zone 
+      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
+        tone(BUZZER_PIN, 500);
+        ball.speed = SPEEDUP / abs(ball.position);
+        nextAlivePlayer = getNextAlivePlayer(players[i].side);
+        ball.direction_from = players[i].side;
+        ball.direction_to = players[nextAlivePlayer].side;
+        Serial.print("Returned from : ");
+        Serial.print(ball.direction_from);
+        Serial.print(" to: ");
+        Serial.println(ball.direction_to);
+      }
     }
-  } else { //ball is already on new LED object, move towards playerzone
-    Serial.println("ball on target"); Serial.println(ball.position);
-    ball.position = ball.position - moveBy;
-    if (ball.position <= 0 ) //ball got over the last pixel -->lose life
-    {
-      loseLife();
+    // Serial.print("Ball Position: ");
+    // Serial.print(sides[ball.currentLEDObject]);
+    // Serial.print(" - ");
+    // Serial.println(ball.position);
+    
+    if(ball.currentLEDObject==ball.direction_from) { //ball is on the way back to the middle
+      Serial.print("back to the middle "); Serial.println(ball.position);
+      ball.position = ball.position + moveBy;
+      if(ball.position > PIXELS_PER_STRIP) { // ball needs to go to middle ring
+        ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of old strip to black
+        //set ball position on middle ring
+        ball.currentLEDObject = MIDDLE;
+        ball.position = 1 - (PIXELS_PER_STRIP-ball.position);
+        ball.position = ball.position + moveBy;
+      }
+    } else if(ball.currentLEDObject == MIDDLE) {
+      Serial.print("ball on middle "); Serial.println(ball.position);
+      ball.position = ball.position + moveBy;
+      if(ball.position > ledRingWays[ball.direction_from][ball.direction_to][0]+1) { //ball goes to strip of to-direction
+        ledObjects[ball.currentLEDObject].setPixelColor((ball.position-moveBy), led_ring.Color(0,0,0)); //set last pixel of LED ring to black
+        ball.currentLEDObject = ball.direction_to;
+        ball.position = PIXELS_PER_STRIP - (ball.position - ledRingWays[ball.direction_from][ball.direction_to][0]) - moveBy;
+      }
+    } else { //ball is already on new LED object, move towards playerzone
+      Serial.print("ball on target "); Serial.println(ball.position);
+      ball.position = ball.position - moveBy;
+      if (ball.position <= 0 ) //ball got over the last pixel -->lose life
+      {
+        loseLife();
+      }
     }
   }
-
 }
 
 //------------------------
@@ -464,16 +477,24 @@ void loop() {
         quit = false;
         if(players[LEFT].lifes > 0 && players[LEFT].button.up) { //left player is alive and released the button first
           ball.direction_from = LEFT;
+          ball.currentLEDObject = LEFT;
           ball.direction_to = getNextAlivePlayer(LEFT);
+          isRestartBall = true;
         } else if(players[UP].lifes > 0 && players[UP].button.up) { //upper player is alive and released the button first
           ball.direction_from = UP;
+          ball.currentLEDObject = UP;
           ball.direction_to = getNextAlivePlayer(UP);
+          isRestartBall = true;
         } else if(players[RIGHT].lifes > 0 && players[RIGHT].button.up) { //right player is alive and released the button first
           ball.direction_from = RIGHT;
+          ball.currentLEDObject = RIGHT;
           ball.direction_to = getNextAlivePlayer(RIGHT);
+          isRestartBall = true;
         } else if(players[DOWN].lifes > 0 && players[DOWN].button.up) { //down player is alive and released the button first
           ball.direction_from = DOWN;
+          ball.currentLEDObject = DOWN;
           ball.direction_to = getNextAlivePlayer(DOWN);
+          isRestartBall = true;
         }
       } else {
         //Check if a new player joined or the first player released the button again
