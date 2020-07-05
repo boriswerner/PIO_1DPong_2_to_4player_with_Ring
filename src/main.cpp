@@ -3,7 +3,7 @@
 
 #define PIXELS_PER_STRIP 17
 #define PIXELS_LED_RING 16
-#define SPEEDUP 40 //90
+
 #define LED_STRIP_1_PIN 2
 #define LED_STRIP_2_PIN 5
 #define LED_STRIP_3_PIN A4
@@ -19,6 +19,7 @@
 
 #define DEBUG
 #define INITIALSPEED 13 //13
+#define SPEEDUP 90 //90
 #define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
 
@@ -33,6 +34,35 @@ side_type sides[5] = {
   LEFT, UP, RIGHT, DOWN, MIDDLE
 };
 
+
+uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
+  { //LEFT to
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6}, //LEFT to LEFT
+    { 5,  6, 5, 4, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT to UP
+    { 9,  6, 5, 4, 3, 2, 1, 0,15,14, 0, 0, 0, 0}, //LEFT to RIGHT
+    {13,  6, 5, 4, 3, 2, 1, 0,15,14,13,12,11,10}, //LEFT to DOWN
+  },
+  { //UP to
+    {13,  2, 1, 0,15,14,13,12,11,10, 9, 8, 7, 6}, //UP to LEFT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}, //UP to UP
+    { 5,  2, 1, 0,15,14, 7, 8, 9,10,11,12,13,14}, //UP to RIGHT
+    { 9,  2, 1, 0,15,14,13,12,11,10, 0, 0, 0, 0}, //UP to DOWN
+  },
+  { //RIGHT to
+    { 9, 14,13,12,11,10, 9, 8, 7, 6, 0, 0, 0, 0}, //RIGHT to LEFT
+    {13, 14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2}, //RIGHT to UP
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,14}, //RIGHT to RIGHT
+    { 5, 14,13,12,11,10, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT to DOWN
+  },
+  { //DOWN to
+    { 5, 10, 9, 8, 7, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN to LEFT
+    { 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 0, 0, 0, 0}, //DOWN to UP
+    {13, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,15,14}, //DOWN to RIGHT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,10}, //DOWN to DOWN
+  }
+};
+
+/* -- rotation clock-wise:
 uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
   { //LEFT to
     { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6}, //LEFT to LEFT
@@ -59,7 +89,7 @@ uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the
     { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,10}, //DOWN to DOWN
   }
 };
-
+*/
 
 struct Button {
   int pin;
@@ -357,7 +387,7 @@ void updateBall(unsigned int td) {
     float moveBy = INITIALSPEED * (td / (float) 1000);
     for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
         // The ball can only be started by pushing the button in the players zone 
-      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
+      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && players[i].button.up) {
         tone(BUZZER_PIN, 500);
         ball.speed = SPEEDUP / abs(ball.position) ;
         isRestartBall = false;
