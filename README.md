@@ -5,10 +5,7 @@ Based on modified version: https://github.com/Andymann/1D-Pong
 
 
 History:
-- Implemented 4 Player mode (not tested yet!)
+- Implemented 4 Player mode
 - Converted to PlatformIO project in VSCode
 
 
-Known issues:
-- der Spieler, bei dem der Ball bei Spielstart losläuft verliert gleich ein Leben
-- Nach Sieg, bevor drawStandby: alles einmal clearen
