@@ -5,20 +5,20 @@
 #define PIXELS_LED_RING 16
 #define SPEEDUP 40 //90
 #define LED_STRIP_1_PIN 2
-#define LED_STRIP_2_PIN 4
-#define LED_STRIP_3_PIN 6
-#define LED_STRIP_4_PIN 8
-#define LED_RING_PIN 10
+#define LED_STRIP_2_PIN 5
+#define LED_STRIP_3_PIN A4
+#define LED_STRIP_4_PIN A1
+#define LED_RING_PIN 8
 
-#define BUZZER_PIN 11
+#define BUZZER_PIN 9
 
 #define BUTTON_1_PIN 3
-#define BUTTON_2_PIN 5
-#define BUTTON_3_PIN 7
-#define BUTTON_4_PIN 9
+#define BUTTON_2_PIN 6
+#define BUTTON_3_PIN A5
+#define BUTTON_4_PIN A2
 
 #define DEBUG
-#define INITIALSPEED 10 //13
+#define INITIALSPEED 13 //13
 #define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
 
@@ -35,28 +35,28 @@ side_type sides[5] = {
 
 uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
   { //LEFT to
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,10}, //LEFT
-    { 5, 10,11,12,13,14, 0, 0, 0, 0, 0, 0, 0, 0}, //UP
-    { 9, 10,11,12,13,14,15, 0, 1, 2, 0, 0, 0, 0}, //RIGHT
-    {13, 10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6}, //DOWN
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6}, //LEFT to LEFT
+    {13,  6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2}, //LEFT to UP
+    { 9,  6, 7, 8, 9,10,11,12,13,14, 0, 0, 0, 0}, //LEFT to RIGHT
+    { 5,  6, 7, 8, 9,10, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT to DOWN
   },
   { //UP to
-    {13, 14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10}, //LEFT
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,14}, //UP
-    { 5, 14,15, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT
-    { 9, 14,15, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0}, //DOWN
+    { 5,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //UP to LEFT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}, //UP to UP
+    {13,  2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14}, //UP to RIGHT
+    { 9,  2, 3, 4, 5, 6, 7, 8, 9,10, 0, 0, 0, 0}, //UP to DOWN
   },
   { //RIGHT to
-    { 9,  2, 3, 4, 5, 6, 7, 8, 9,10, 0, 0, 0, 0}, //LEFT
-    {13,  2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14}, //UP
-    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}, //RIGHT
-    { 5,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN
+    { 9, 14,15, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0}, //RIGHT to LEFT
+    { 5, 14,15, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0}, //RIGHT to UP
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,14}, //RIGHT to RIGHT
+    {13, 14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10}, //RIGHT to DOWN
   },
   { //DOWN to
-    { 5,  6, 7, 8, 9,10, 0, 0, 0, 0, 0, 0, 0, 0}, //LEFT
-    { 9,  6, 7, 8, 9,10,11,12,13,14, 0, 0, 0, 0}, //UP
-    {13,  6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2}, //RIGHT
-    { 0,  2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 6}, //DOWN
+    {13, 10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6}, //DOWN to LEFT
+    { 9, 10,11,12,13,14,15, 0, 1, 2, 0, 0, 0, 0}, //DOWN to UP
+    { 5, 10,11,12,13,14, 0, 0, 0, 0, 0, 0, 0, 0}, //DOWN to RIGHT
+    { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,10}, //DOWN to DOWN
   }
 };
 
@@ -319,7 +319,12 @@ void drawGame()
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
     setAllTo(players[i].side, led_ring.Color(0, 0, 0));
     renderPlayer(&players[i]);
-    ledObjects[players[i].side].setPixelColor(PLAYERZONE, players[i].color.red/10, players[i].color.green/10, players[i].color.blue/10);
+    if(players[i].lifes>0) {
+      ledObjects[players[i].side].setPixelColor(PLAYERZONE, players[i].color.red/10, players[i].color.green/10, players[i].color.blue/10);
+    } else {
+      ledObjects[players[i].side].setPixelColor(PLAYERZONE, 0, 0, 0);
+    }
+    
     ledObjects[players[i].side].show();
   }
   renderBall(ball);
