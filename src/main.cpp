@@ -1,5 +1,5 @@
 #include <Adafruit_NeoPixel.h>
-
+#include <EEPROM.h>
 
 #define PIXELS_PER_STRIP 17
 #define PIXELS_LED_RING 16
@@ -17,9 +17,12 @@
 #define BUTTON_3_PIN A5
 #define BUTTON_4_PIN A2
 
-#define DEBUG
-#define INITIALSPEED 13 //13
-#define SPEEDUP 90 //90
+//#define DEBUG
+
+#define EEPROM_ADRESS_BRIGHTNESS 0
+#define EEPROM_ADRESS_LOW_SPEED 1
+#define EEPROM_ADRESS_HIGH_SPEED 2
+
 #define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
 
@@ -34,7 +37,7 @@ side_type sides[5] = {
   LEFT, UP, RIGHT, DOWN, MIDDLE
 };
 
-
+uint16_t ledRingMenuWay[16] = {6, 5, 4, 3, 2, 1, 0,15,14,13,12,11,10, 9, 8, 7};
 uint16_t ledRingWays[4][4][14] = { //1st byte is number of pixels, following the pixel addresses
   { //LEFT to
     { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6}, //LEFT to LEFT
@@ -106,7 +109,9 @@ struct Color {
 };
 
 struct Player {
-  Color color;
+  Color life_color;
+  Color zone_color;
+  Color ring_color;
   uint16_t lifes;
   side_type side;
   Button button;
@@ -126,6 +131,25 @@ struct Ball {
 // Initializations
 //------------------------
 
+byte brightness_control = 0; //0=low brightness - 5=very high brightness
+//will be overwritten from EEPROM
+
+const byte MAIN_BRIGHTNESS[8] = {
+  1, 5, 10, 25, 50, 100, 200, 255
+}; //[0-255]
+const byte BALL_BRIGHTNESS[8] = {
+  1, 3, 8, 20, 35, 75, 150, 220
+};
+const byte LEDRING_BRIGHTNESS[8] = {
+  1, 1, 8, 20, 35, 75, 150, 220
+};
+const byte ZONE_BRIGHTNESS[8] = {
+  1, 1, 3, 10, 20, 50, 100, 200
+};
+
+int low_speed = 30; //[1-255] will be overwritten from EEPROM
+int high_speed = 90; //[1-255] will be overwritten from EEPROM
+
 bool quit = true;
 bool isRestartBall = true;
 int8_t restartMove = -1;
@@ -144,22 +168,30 @@ Adafruit_NeoPixel ledObjects[5] = {
 };
 
 Player players[4] = {
-  { .color = Color{0,0,255,led_ring.Color(0,0,255)}, 
+  { .life_color = Color{0,0,MAIN_BRIGHTNESS[brightness_control],led_ring.Color(0,0,MAIN_BRIGHTNESS[brightness_control])}, 
+    .zone_color = Color{0,0,ZONE_BRIGHTNESS[brightness_control],led_ring.Color(0,0,ZONE_BRIGHTNESS[brightness_control])}, 
+    .ring_color = Color{0,0,LEDRING_BRIGHTNESS[brightness_control],led_ring.Color(0,0,LEDRING_BRIGHTNESS[brightness_control])}, 
     .lifes = 0, 
     .side = LEFT, 
     .button = (Button) {.pin = BUTTON_1_PIN}
   },
-  { .color = Color{0,255,0,led_ring.Color(0,255,0)}, 
+  { .life_color = Color{0,MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(0,MAIN_BRIGHTNESS[brightness_control],0)}, 
+    .zone_color = Color{0,ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(0,ZONE_BRIGHTNESS[brightness_control],0)}, 
+    .ring_color = Color{0,LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(0,LEDRING_BRIGHTNESS[brightness_control],0)}, 
     .lifes = 0, 
     .side = UP, 
     .button = (Button) {.pin = BUTTON_2_PIN}
   },
-  { .color = Color{255,0,0,led_ring.Color(255,0,0)}, 
+  { .life_color = Color{MAIN_BRIGHTNESS[brightness_control],0,0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],0,0)}, 
+    .zone_color = Color{ZONE_BRIGHTNESS[brightness_control],0,0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],0,0)}, 
+    .ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],0,0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],0,0)}, 
     .lifes = 0, 
     .side = RIGHT, 
     .button = (Button) {.pin = BUTTON_3_PIN}
   },
-  { .color = Color{255,255,0,led_ring.Color(255,255,0)}, 
+  { .life_color = Color{MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0)}, 
+    .zone_color = Color{ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0)}, 
+    .ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0)}, 
     .lifes = 0, 
     .side = DOWN, 
     .button = (Button) {.pin = BUTTON_4_PIN}
@@ -167,14 +199,13 @@ Player players[4] = {
 };
 
 Ball ball = {
-  .color = Color{100,100,100,led_ring.Color(100,100,100)}, 
+  .color = Color{BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],led_ring.Color(BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control])}, 
   .currentLEDObject = MIDDLE,
   .position = 5,
   .direction_from = MIDDLE,
   .direction_to = MIDDLE,
-  .speed = INITIALSPEED
+  .speed = low_speed*1.0
 };
-
 
 // Refresh interval at which to set our game loop
 // To avoid having the game run at different speeds depending on hardware
@@ -182,6 +213,11 @@ const int refreshInterval = 16; // 60 FPS
 
 // Used to calculate the delta between loops for a steady frame-rate
 unsigned long lastRefreshTime = 0;
+unsigned long loseLifeTime = 0;
+
+//menu
+int menuActivationCounter = 0;
+int menuMode = 0; //0=menu inactive, 1=set brightness, 2=set LOW_SPEED, 3=set HIGH_SPEED
 
 // is the game in standby mode?
 byte currentStandby = 0;
@@ -208,11 +244,27 @@ void colorWipe(int ledNumber, uint32_t c, uint8_t wait) {
   }
 }
 
+void initGameSettings() 
+{
+  players[LEFT].life_color = Color{0,0,MAIN_BRIGHTNESS[brightness_control],led_ring.Color(0,0,MAIN_BRIGHTNESS[brightness_control])};
+  players[LEFT].zone_color = Color{0,0,ZONE_BRIGHTNESS[brightness_control],led_ring.Color(0,0,ZONE_BRIGHTNESS[brightness_control])};
+  players[LEFT].ring_color = Color{0,0,LEDRING_BRIGHTNESS[brightness_control],led_ring.Color(0,0,LEDRING_BRIGHTNESS[brightness_control])};
+  players[UP].life_color = Color{0,MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(0,MAIN_BRIGHTNESS[brightness_control],0)}; 
+  players[UP].zone_color = Color{0,ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(0,ZONE_BRIGHTNESS[brightness_control],0)};
+  players[UP].ring_color = Color{0,LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(0,LEDRING_BRIGHTNESS[brightness_control],0)};
+  players[RIGHT].life_color = Color{MAIN_BRIGHTNESS[brightness_control],0,0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],0,0)}; 
+  players[RIGHT].zone_color = Color{ZONE_BRIGHTNESS[brightness_control],0,0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],0,0)};
+  players[RIGHT].ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],0,0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],0,0)};
+  players[DOWN].life_color = Color{MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0)}; 
+  players[DOWN].zone_color = Color{ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0)};
+  players[DOWN].ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0)};
+  ball.color = Color{BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],led_ring.Color(BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control])};
+}
 
 void drawPointLossAnimation(Player player)
 {
   tone(BUZZER_PIN, 250);
-  setAllTo(player.side, led_ring.Color(10, 10, 10));
+  setAllTo(player.side, led_ring.Color(BALL_BRIGHTNESS[brightness_control], BALL_BRIGHTNESS[brightness_control], BALL_BRIGHTNESS[brightness_control]));
   delay(100);
   setAllTo(player.side, led_ring.Color(0, 0, 0));
   noTone(BUZZER_PIN);
@@ -244,7 +296,7 @@ side_type getNextAlivePlayer(side_type last) {
 
 void renderPlayer(Player *p) {
     for (uint16_t i = 0; i < p->lifes; i++) {
-      ledObjects[p->side].setPixelColor((i), p->color.RGBcolor); //led connection at button side
+      ledObjects[p->side].setPixelColor((i), p->life_color.RGBcolor); //led connection at button side
       ledObjects[p->side].show();
     }
 
@@ -253,9 +305,14 @@ void renderPlayer(Player *p) {
 void renderBall(Ball ball) {
   if(ball.currentLEDObject == MIDDLE) {
     ledObjects[ball.currentLEDObject].setPixelColor(ledRingWays[ball.direction_from][ball.direction_to][(byte)(ball.position)]
-      , ball.color.red/50, ball.color.green/50, ball.color.blue/50);
+      , ball.color.red
+      , ball.color.green
+      , ball.color.blue);
   } else {
-    ledObjects[ball.currentLEDObject].setPixelColor(ball.position, ball.color.RGBcolor);
+    ledObjects[ball.currentLEDObject].setPixelColor(ball.position
+      , ball.color.red
+      , ball.color.green
+      , ball.color.blue);
   }
   ledObjects[ball.currentLEDObject].show();
 }
@@ -302,6 +359,7 @@ void processInput() {
 
 // player lost a life
 void loseLife() {
+  loseLifeTime = millis();
   players[ball.direction_to].lifes = players[ball.direction_to].lifes - 1; // reduce lifes of player
   Serial.print("Life lost: Player ");
   Serial.println(ball.direction_to);
@@ -315,14 +373,14 @@ void loseLife() {
       quit = true;
       alivePlayers = 0;
       players[ball.direction_from].lifes = 0;
-      colorWipe(players[ball.direction_from].side, players[ball.direction_from].color.RGBcolor , 100);  
+      colorWipe(players[ball.direction_from].side, players[ball.direction_from].life_color.RGBcolor , 100);  
       // reset all strips to black after each game
       for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
         setAllTo(players[i].side, led_ring.Color(0,0,0));
       }
 
     } else { //one player is out but more than one is left
-      colorWipe(players[ball.direction_to].side, players[ball.direction_from].color.RGBcolor , 20);
+      colorWipe(players[ball.direction_to].side, players[ball.direction_from].life_color.RGBcolor , 20);
       setAllTo(players[ball.direction_to].side, led_ring.Color(0,0,0));
     }
   } else { //player lost one life but is still in 
@@ -337,9 +395,9 @@ void loseLife() {
   Serial.println(ball.direction_to);
   ball.currentLEDObject = ball.direction_from;
   ball.position = PLAYERZONE; //starting position is playerzone
-  ball.speed = INITIALSPEED;
+  ball.speed = low_speed;
   isRestartBall = true;
-  restartMove = INITIALSPEED;
+  restartMove = -1;
   lastRefreshTime = 0;
 }
 
@@ -350,7 +408,10 @@ void drawGame()
     setAllTo(players[i].side, led_ring.Color(0, 0, 0));
     renderPlayer(&players[i]);
     if(players[i].lifes>0) {
-      ledObjects[players[i].side].setPixelColor(PLAYERZONE, players[i].color.red/10, players[i].color.green/10, players[i].color.blue/10);
+      ledObjects[players[i].side].setPixelColor(PLAYERZONE
+      , players[i].zone_color.red
+      , players[i].zone_color.green
+      , players[i].zone_color.blue);
     } else {
       ledObjects[players[i].side].setPixelColor(PLAYERZONE, 0, 0, 0);
     }
@@ -361,20 +422,111 @@ void drawGame()
 
 }
 
+void updateBallMenu(int speed)
+{
+  setAllTo(RIGHT, led_ring.Color(0, 0, 0));
+  ball.direction_from = RIGHT;
+  ball.currentLEDObject = RIGHT;
+  ball.direction_to = getNextAlivePlayer(RIGHT);
+  
+  float moveBy = speed/100.0;
+  ball.position = ball.position + (moveBy * restartMove);
+  if (ball.position <= 0 ) {//ball got out of player zone switch direction
+    restartMove = 1;
+    ball.position = 0;
+  } else if (ball.position > PIXELS_LED_RING) {
+    restartMove = -1;
+    ball.position = PIXELS_LED_RING;
+  }
+  renderBall(ball);
+}
+
+void drawMenu()
+{
+  setAllTo(MIDDLE, led_ring.Color(0, 0, 0));
+  if(players[LEFT].button.up){
+    menuMode = menuMode + 1;
+  }
+  if(menuMode==1) {
+    if(players[UP].button.up){
+      brightness_control==7 ? brightness_control = 0 : brightness_control = brightness_control + 1;
+    }
+    if(players[DOWN].button.up){
+      brightness_control==0 ? brightness_control = 7 : brightness_control = brightness_control - 1;
+    }
+    initGameSettings();
+    for(byte i = 0; i <= ((brightness_control+1)*2)-1; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingMenuWay[i]
+        , players[LEFT].life_color.red
+        , players[LEFT].life_color.green
+        , players[LEFT].life_color.blue);
+        ledObjects[MIDDLE].show();
+    }
+  } else if(menuMode==2) {
+    if(players[UP].button.up){
+      low_speed>=170 ? low_speed = 20 : low_speed = low_speed + 10;
+    }
+    if(players[DOWN].button.up){
+      low_speed<=20 ? low_speed = 170 : low_speed = low_speed - 10;
+    }
+    updateBallMenu(low_speed);
+    for(byte i = 0; i < (low_speed-10)/10; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingMenuWay[i]
+        , players[UP].life_color.red
+        , players[UP].life_color.green
+        , players[UP].life_color.blue);
+        ledObjects[MIDDLE].show();
+    }
+  } else if(menuMode==3) {
+    if(players[UP].button.up){
+      high_speed>=190 ? high_speed = 40 : high_speed = high_speed + 10;
+    }
+    if(players[DOWN].button.up){
+      high_speed<=40 ? high_speed = 190 : high_speed = high_speed - 10;
+    }
+    updateBallMenu(high_speed);
+    for(byte i = 0; i < (high_speed-30)/10; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingMenuWay[i]
+        , players[RIGHT].life_color.red
+        , players[RIGHT].life_color.green
+        , players[RIGHT].life_color.blue);
+        ledObjects[MIDDLE].show();
+    }
+  } else if(menuMode==4) {
+    EEPROM.update(EEPROM_ADRESS_BRIGHTNESS, brightness_control);
+    EEPROM.update(EEPROM_ADRESS_LOW_SPEED, low_speed);
+    EEPROM.update(EEPROM_ADRESS_HIGH_SPEED, high_speed);
+    setAllTo(RIGHT, led_ring.Color(0, 0, 0));
+    menuMode=0;
+  }
+}
+
 void drawStandby()
 {
-  if (players[LEFT].button.isPressed || players[UP].button.isPressed || players[RIGHT].button.isPressed || players[DOWN].button.isPressed) {
+  if(menuActivationCounter > 0) {
+    ledObjects[MIDDLE].setPixelColor(ledRingWays[LEFT][LEFT][13], 0,0,0);
+    ledObjects[MIDDLE].show();
+    for(byte i = 0; i < menuActivationCounter; i = i + 1) {
+      ledObjects[LEFT].setPixelColor(i
+        , players[LEFT].life_color.red
+        , players[LEFT].life_color.green
+        , players[LEFT].life_color.blue);
+      ledObjects[LEFT].show();
+    }
+  }  else if (players[LEFT].button.isPressed || players[UP].button.isPressed || players[RIGHT].button.isPressed || players[DOWN].button.isPressed) {
     for(byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       if(players[i].button.isPressed) {
         ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13]
-        , players[i].color.red/100, players[i].color.green/100, players[i].color.blue/100);
+        , players[i].ring_color.red
+        , players[i].ring_color.green
+        , players[i].ring_color.blue);
         ledObjects[MIDDLE].show();
       } else {
         ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13], 0,0,0);
         ledObjects[MIDDLE].show();
       }
     }
-  } else {
+  } else { //no button pressed and menu not active
     for(byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       ledObjects[MIDDLE].setPixelColor(ledRingWays[players[i].side][players[i].side][13], 0,0,0);
       ledObjects[MIDDLE].show();
@@ -384,32 +536,34 @@ void drawStandby()
 
 void updateBall(unsigned int td) {
   if(isRestartBall) { //on restarting the ball the ball moves in the player zone for initial speed
-    float moveBy = INITIALSPEED * (td / (float) 1000);
-    for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
-        // The ball can only be started by pushing the button in the players zone 
-      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && players[i].button.up) {
-        tone(BUZZER_PIN, 500);
-        ball.speed = SPEEDUP / abs(ball.position) ;
-        isRestartBall = false;
+    if(millis() > loseLifeTime + 1000) { //delay after losing life to not accidentally start the ball with failed return hit
+      loseLifeTime = 0;
+      float moveBy = low_speed/100.0;
+      for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+          // The ball can only be started by pushing the button in the players zone 
+        if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && players[i].button.up) {
+          tone(BUZZER_PIN, 500);
+          ball.speed = low_speed + ((high_speed - low_speed) * ((PLAYERZONE-ball.position)/PLAYERZONE )) ;
+          isRestartBall = false;
+        }
+      }
+      //move ball in players zone
+      ball.position = ball.position + (moveBy * restartMove);
+      if (ball.position <= 0 ) {//ball got out of player zone switch direction
+        restartMove = 1;
+        ball.position = 0;
+      } else if (ball.position >= PLAYERZONE) {
+        restartMove = -1;
+        ball.position = PLAYERZONE;
       }
     }
-    //move ball in players zone
-    ball.position = ball.position + (moveBy * restartMove);
-    if (ball.position <= 0 ) {//ball got out of player zone switch direction
-      restartMove = 1;
-      ball.position = ball.position + moveBy;
-    } else if (ball.position >= PLAYERZONE) {
-      restartMove = -1;
-      ball.position = ball.position - moveBy;
-    }
-
   } else {
-    float moveBy = ball.speed * (td / (float) 1000);
+    float moveBy = ball.speed / 100.0;
     for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
         // The ball can only be returned by pushing the button in the players zone 
-      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down || players[i].button.up)) {
+      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down)) {
         tone(BUZZER_PIN, 500);
-        ball.speed = SPEEDUP / abs(ball.position);
+        ball.speed = low_speed + ((high_speed - low_speed) * ((PLAYERZONE-ball.position)/PLAYERZONE )) ;;
         nextAlivePlayer = getNextAlivePlayer(players[i].side);
         ball.direction_from = players[i].side;
         ball.direction_to = players[nextAlivePlayer].side;
@@ -463,18 +617,34 @@ void setup() {
     Serial.begin(9600);
   #endif
 
+  brightness_control = EEPROM.read(EEPROM_ADRESS_BRIGHTNESS);
+  if(brightness_control > 7) { //initial setting
+    brightness_control = 3;
+    EEPROM.update(EEPROM_ADRESS_BRIGHTNESS, brightness_control);
+  }
+  low_speed = EEPROM.read(EEPROM_ADRESS_LOW_SPEED);
+  if(low_speed == 255) { //initial setting
+    low_speed = 30;
+    EEPROM.update(EEPROM_ADRESS_LOW_SPEED, low_speed);
+  }
+  high_speed = EEPROM.read(EEPROM_ADRESS_HIGH_SPEED);
+  if(high_speed == 255) { //initial setting
+    high_speed = 90;
+    EEPROM.update(EEPROM_ADRESS_HIGH_SPEED, high_speed);
+  }
+  initGameSettings();
 //Initialize players buttons and strips
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
     pinMode(players[i].button.pin, INPUT_PULLUP);
     ledObjects[players[i].side].begin();
-    ledObjects[players[i].side].setBrightness(15);  // Range from 0-255, so 100 is a bit less than 50% brightness
+    //ledObjects[players[i].side].setBrightness(255);
     ledObjects[players[i].side].show();
     
     setAllTo(players[i].side, led_ring.Color(0, 0, 0)); //necessary?
   }
 //initialize LED ring
   led_ring.begin();
-  led_ring.setBrightness(15);
+  //led_ring.setBrightness(255);
   led_ring.show();
   setAllTo(MIDDLE, led_ring.Color(0, 0, 0)); //necessary?
 }
@@ -505,7 +675,9 @@ void loop() {
       }
       
     }
-    else
+    else if (menuMode) {
+      drawMenu();
+    } else 
     { // the game starts if 2 or more players hold down the button and at least one releases it
       if (alivePlayers > 1 && (players[LEFT].button.up || players[UP].button.up || players[RIGHT].button.up || players[DOWN].button.up))
       {
@@ -538,6 +710,16 @@ void loop() {
             alivePlayers = alivePlayers - 1;
             players[i].lifes = 0;
             Serial.println("All players left");
+            if(i==LEFT) {
+              menuActivationCounter++;
+              if(menuActivationCounter == 3){
+                menuMode = 1;
+                menuActivationCounter = 0;
+                ledObjects[LEFT].setPixelColor(0,0,0,0);
+                ledObjects[LEFT].setPixelColor(1,0,0,0);
+                ledObjects[LEFT].show();
+              }
+            }
           }
           if(players[i].button.down && players[i].lifes == 0) { // if player pressed the button just now, get him in the game
             alivePlayers = alivePlayers + 1;
@@ -545,6 +727,9 @@ void loop() {
             
             Serial.print("Added player: ");
             Serial.println(i);
+            if(i!=LEFT) {
+              menuActivationCounter = 0;
+            }
           }
         }
         drawStandby();
