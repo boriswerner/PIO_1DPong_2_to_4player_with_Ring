@@ -24,6 +24,7 @@
 #define EEPROM_ADRESS_HIGH_SPEED 2
 #define EEPROM_ADRESS_GAME_MODE 3
 #define EEPROM_ADRESS_MAX_RING_ROUNDS 4
+#define EEPROM_ADRESS_SELF_PROBABILITY 5
 
 #define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
@@ -52,8 +53,8 @@ uint16_t ledRingWays[4][4][18] = { //1st byte is number of pixels, following the
   },
   { //UP to
     {13,  2, 1, 0,15,14,13,12,11,10, 9, 8, 7, 6, 0, 0, 0, 0}, //UP to LEFT
-    {17,  2, 1, 0,15,14, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2}, //UP to UP
-    { 5,  2, 1, 0,15,14, 7, 8, 9,10,11,12,13,14, 0, 0, 0, 0}, //UP to RIGHT
+    {17,  2, 1, 0,15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2}, //UP to UP
+    { 5,  2, 1, 0,15,14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //UP to RIGHT
     { 9,  2, 1, 0,15,14,13,12,11,10, 0, 0, 0, 0, 0, 0, 0, 0}, //UP to DOWN
   },
   { //RIGHT to
@@ -91,6 +92,8 @@ struct Player {
   uint16_t lifes;
   side_type side;
   Button button;
+  side_type clockwiseNextPlayer;
+  side_type counterClockwiseNextPlayer;
 };
 
 struct Ball {
@@ -130,9 +133,6 @@ bool quit = true;
 bool isRestartBall = true;
 int8_t restartMove = -1;
 
-side_type nextAlivePlayer;
-byte alivePlayers = 0;
-
 Adafruit_NeoPixel led_ring = Adafruit_NeoPixel(PIXELS_LED_RING, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 
 Adafruit_NeoPixel ledObjects[5] = {
@@ -149,30 +149,60 @@ Player players[4] = {
     .ring_color = Color{0,0,LEDRING_BRIGHTNESS[brightness_control],led_ring.Color(0,0,LEDRING_BRIGHTNESS[brightness_control])}, 
     .lifes = 0, 
     .side = LEFT, 
-    .button = (Button) {.pin = BUTTON_1_PIN}
+    .button = (Button) {.pin = BUTTON_1_PIN},
+    .clockwiseNextPlayer = LEFT,
+    .counterClockwiseNextPlayer = LEFT
   },
   { .life_color = Color{0,MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(0,MAIN_BRIGHTNESS[brightness_control],0)}, 
     .zone_color = Color{0,ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(0,ZONE_BRIGHTNESS[brightness_control],0)}, 
     .ring_color = Color{0,LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(0,LEDRING_BRIGHTNESS[brightness_control],0)}, 
     .lifes = 0, 
     .side = UP, 
-    .button = (Button) {.pin = BUTTON_2_PIN}
+    .button = (Button) {.pin = BUTTON_2_PIN},
+    .clockwiseNextPlayer = UP,
+    .counterClockwiseNextPlayer = UP
   },
   { .life_color = Color{MAIN_BRIGHTNESS[brightness_control],0,0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],0,0)}, 
     .zone_color = Color{ZONE_BRIGHTNESS[brightness_control],0,0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],0,0)}, 
     .ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],0,0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],0,0)}, 
     .lifes = 0, 
     .side = RIGHT, 
-    .button = (Button) {.pin = BUTTON_3_PIN}
+    .button = (Button) {.pin = BUTTON_3_PIN},
+    .clockwiseNextPlayer = RIGHT,
+    .counterClockwiseNextPlayer = RIGHT
   },
   { .life_color = Color{MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0,led_ring.Color(MAIN_BRIGHTNESS[brightness_control],MAIN_BRIGHTNESS[brightness_control],0)}, 
     .zone_color = Color{ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0,led_ring.Color(ZONE_BRIGHTNESS[brightness_control],ZONE_BRIGHTNESS[brightness_control],0)}, 
     .ring_color = Color{LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0,led_ring.Color(LEDRING_BRIGHTNESS[brightness_control],LEDRING_BRIGHTNESS[brightness_control],0)}, 
     .lifes = 0, 
     .side = DOWN, 
-    .button = (Button) {.pin = BUTTON_4_PIN}
+    .button = (Button) {.pin = BUTTON_4_PIN},
+    .clockwiseNextPlayer = DOWN,
+    .counterClockwiseNextPlayer = DOWN
   },
 };
+
+side_type nextAlivePlayer;
+byte alivePlayers = 0;
+side_type alivePlayerList[4];
+
+void appendAlivePlayer(side_type item) {
+    if (alivePlayers < NUMBER_OF_PLAYERS) alivePlayerList[alivePlayers++] = item;
+}
+void removeAlivePlayer(side_type item) {
+  alivePlayers--;
+  byte addedAlivePlayers = 0;
+  byte i = 0;
+  while (addedAlivePlayers < alivePlayers) {
+    if(players[i].lifes > 0) {
+      alivePlayerList[addedAlivePlayers++] = sides[i];
+    }
+    i++;
+  }
+
+  players[players[item].clockwiseNextPlayer].counterClockwiseNextPlayer = players[item].counterClockwiseNextPlayer;
+  players[players[item].counterClockwiseNextPlayer].clockwiseNextPlayer = players[item].clockwiseNextPlayer;
+}
 
 Ball ball = {
   .color = Color{BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],led_ring.Color(BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control])}, 
@@ -199,6 +229,7 @@ bool randomGameMode = false;
 byte maxRingRounds = 0;
 byte ringRoundRandomValue = 0;
 byte ringRoundCounter = 0;
+byte selfProbability = 16; // value of 1 means 1/2 chance that the ball returns to self, 5 means 1/6 chance
 
 // is the game in standby mode?
 byte currentStandby = 0;
@@ -242,6 +273,34 @@ void initGameSettings()
   ball.color = Color{BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],led_ring.Color(BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control],BALL_BRIGHTNESS[brightness_control])};
 }
 
+void initPlayers()
+{
+  for (byte i = 0; i < NUMBER_OF_PLAYERS; i++) {
+    if(players[i].lifes>0) {
+      byte nextCounterClockwise = sides[i] == DOWN ? LEFT: sides[i+1];
+      byte nextClockwise = sides[i] == LEFT ? DOWN: sides[i-1];
+      for (byte j = 0; j < NUMBER_OF_PLAYERS-1; j++) {
+        if(players[nextCounterClockwise].lifes > 0) {
+          players[i].counterClockwiseNextPlayer = sides[nextCounterClockwise];
+        } else {
+          nextCounterClockwise = sides[nextCounterClockwise+1] == MIDDLE ? LEFT: sides[nextCounterClockwise+1];
+        }
+        if(players[nextClockwise].lifes > 0) {
+          players[i].clockwiseNextPlayer = sides[nextClockwise];
+        } else {
+          nextClockwise = sides[nextClockwise] == LEFT ? DOWN: sides[nextClockwise-1];
+        }
+      }
+    }
+  }
+  for (byte i = 0; i < NUMBER_OF_PLAYERS; i++) {
+    Serial.print("Player: "); Serial.println(players[i].side);
+    Serial.print("   Lifes: "); Serial.println(players[i].lifes);
+    Serial.print("   NextClockwise: "); Serial.println(players[i].clockwiseNextPlayer);
+    Serial.print("   NextCounterClockwise: "); Serial.println(players[i].counterClockwiseNextPlayer);
+  }
+}
+
 void drawPointLossAnimation(Player player)
 {
   tone(BUZZER_PIN, 250);
@@ -256,72 +315,58 @@ void drawPointLossAnimation(Player player)
 //------------------------
 
 side_type getNextAlivePlayer(side_type last) {
-  if(alivePlayers == 1) {
-    for(byte i = 0; i < 4; i = i + 1) {
-      if(players[i].lifes > 0) {
-        Serial.print(" last player alive=");  Serial.println(i);
-        return players[i].side;
-      }
-    }
-  } else if(gameMode == 5) {
-    side_type alivePlayersArray[alivePlayers];
-    byte side_index = 0;
-    for(byte i = 0; i < 4; i = i + 1) {
-      if(players[i].lifes > 0) {
-        Serial.print(" player alive=");  Serial.println(i);
-        alivePlayersArray[side_index] = players[i].side;
-        side_index = side_index + 1;
-      } else {
-        Serial.print(" player not alive=");  Serial.println(i);
-      }
-    }
-    long next_index = random(0, alivePlayers);
-    Serial.print("next_index=");  Serial.println(next_index);
-    side_type next = alivePlayersArray[next_index];
-    Serial.print("next_side=");  Serial.println(next);
-    return next;
-  } else if(gameMode == 4) {
+  Serial.print("Number of Alive Players: ");Serial.println(alivePlayers);
+  if(alivePlayers == 1) { //only one player alive
+    return alivePlayerList[0];
+
+  } else if(gameMode == 5 || gameMode == 4) { //random next player incl./excl. self
     side_type alivePlayersArray[alivePlayers-1];
     byte side_index = 0;
-    for(byte i = 0; i < 4; i = i + 1) {
-      if(players[i].lifes > 0 && i != last) {
-        Serial.print(" player alive=");  Serial.println(i);
-        alivePlayersArray[side_index] = players[i].side;
-        side_index = side_index + 1;
-      } else {
-        Serial.print(" player not alive=");  Serial.println(i);
+    for(byte i = 0; i < alivePlayers; i++) {
+      if(alivePlayerList[i] != last) {
+        alivePlayersArray[side_index++] = alivePlayerList[i];
       }
     }
     long next_index = random(0, alivePlayers-1);
     Serial.print("next_index=");  Serial.println(next_index);
     side_type next = alivePlayersArray[next_index];
     Serial.print("next_side=");  Serial.println(next);
-    return next;
-  } else if (ringDirection == 0) { //counter clockwise
-    byte next = sides[last+1] == MIDDLE ? LEFT: sides[last+1];
-    do {
-      if(players[next].lifes > 0) {
-        return sides[next];
-      } else {
-        next = sides[next+1] == MIDDLE ? LEFT: sides[next+1];
+
+    if(gameMode == 5) {
+      if(random(1,selfProbability+2)==1){
+        Serial.print("next_side=self");  Serial.println(next);
+        return last;
       }
-    } while (next != last);
+    }
+    return next;
+
+  } else if (ringDirection == 0) { //counter clockwise
+    return players[last].counterClockwiseNextPlayer;
+    // byte next = sides[last+1] == MIDDLE ? LEFT: sides[last+1];
+    // do {
+    //   if(players[next].lifes > 0) {
+    //     return sides[next];
+    //   } else {
+    //     next = sides[next+1] == MIDDLE ? LEFT: sides[next+1];
+    //   }
+    // } while (next != last);
 
   } else if (ringDirection == 1) { //clockwise
-    byte next = last == 0 ? DOWN: sides[last-1];
-    Serial.print("1 LoopCheck nextAlivePlayer: ");
-    Serial.println(next);
-    do {
-      if(players[next].lifes > 0) {
-        Serial.print("nextAlivePlayer: ");
-        Serial.println(next);
-        return sides[next];
-      } else {
-        next = next == 0 ? DOWN: sides[next-1];
-        Serial.print("LoopCheck nextAlivePlayer: ");
-        Serial.println(next);
-      }
-    } while (next != last);
+    return players[last].clockwiseNextPlayer;
+    // byte next = last == 0 ? DOWN: sides[last-1];
+    // Serial.print("1 LoopCheck nextAlivePlayer: ");
+    // Serial.println(next);
+    // do {
+    //   if(players[next].lifes > 0) {
+    //     Serial.print("nextAlivePlayer: ");
+    //     Serial.println(next);
+    //     return sides[next];
+    //   } else {
+    //     next = next == 0 ? DOWN: sides[next-1];
+    //     Serial.print("LoopCheck nextAlivePlayer: ");
+    //     Serial.println(next);
+    //   }
+    // } while (next != last);
   }
 return last;
 
@@ -421,8 +466,8 @@ void loseLife() {
   if (players[ball.direction_to].lifes == 0) { // if the current player lost his last life
     Serial.print("Last life lost: Player ");
     Serial.println(ball.direction_to);
-    alivePlayers = alivePlayers-1; // reduce number of players
-    if(alivePlayers == 1) { // is only one player left? then reset all players lifes
+    removeAlivePlayer(ball.direction_to); // reduce number of players
+    if(alivePlayers <= 1) { // is only one player left? then reset all players lifes
       quit = true;
       Serial.print("Game won: Player ");
       side_type winner = getNextAlivePlayer(ball.direction_from);
@@ -599,12 +644,27 @@ void drawMenu()
         , players[RIGHT].life_color.blue);
         ledObjects[MIDDLE].show();
     }
-  } else if(menuMode==6) {
+  } else if(menuMode==6) { // self probability
+    if(players[UP].button.up){
+      selfProbability>=16 ? selfProbability = 1 : selfProbability = selfProbability + 1;
+    }
+    if(players[DOWN].button.up){
+      selfProbability<=1 ? selfProbability = 16 : selfProbability = selfProbability - 1;
+    }
+    for(byte i = 0; i < selfProbability; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingMenuWay[i]
+        , players[RIGHT].life_color.red
+        , players[RIGHT].life_color.green
+        , players[RIGHT].life_color.blue);
+        ledObjects[MIDDLE].show();
+    }
+  } else if(menuMode==7) {
     EEPROM.update(EEPROM_ADRESS_BRIGHTNESS, brightness_control);
     EEPROM.update(EEPROM_ADRESS_LOW_SPEED, low_speed);
     EEPROM.update(EEPROM_ADRESS_HIGH_SPEED, high_speed);
     EEPROM.update(EEPROM_ADRESS_GAME_MODE, gameMode);
     EEPROM.update(EEPROM_ADRESS_MAX_RING_ROUNDS, maxRingRounds);
+    EEPROM.update(EEPROM_ADRESS_SELF_PROBABILITY, selfProbability);
     setAllTo(RIGHT, led_ring.Color(0, 0, 0));
     setAllTo(LEFT, led_ring.Color(0, 0, 0));
     setAllTo(MIDDLE, led_ring.Color(0, 0, 0));
@@ -650,9 +710,10 @@ void updateBall(unsigned int td) {
     if(millis() > loseLifeTime + 1000) { //delay after losing life to not accidentally start the ball with failed return hit
       loseLifeTime = 0;
       float moveBy = low_speed/100.0;
-      for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+      ball.speed = low_speed;
+      //for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
           // The ball can only be started by pushing the button in the players zone 
-        if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_from && ball.position<=PLAYERZONE+0.5 && players[i].button.up) {
+        if (ball.currentLEDObject == players[ball.direction_from].side && ball.position<=PLAYERZONE+0.5 && players[ball.direction_from].button.up) {
           tone(BUZZER_PIN, 500);
           ringPassed = false;
           ringRoundRandomValue = random(0,maxRingRounds+1);
@@ -660,7 +721,7 @@ void updateBall(unsigned int td) {
           ball.speed = low_speed + ((high_speed - low_speed) * ((PLAYERZONE-ball.position)/PLAYERZONE )) ;
           isRestartBall = false;
         }
-      }
+      //}
       //move ball in players zone
       ball.position = ball.position + (moveBy * restartMove);
       if (ball.position <= 0 ) {//ball got out of player zone switch direction
@@ -671,11 +732,11 @@ void updateBall(unsigned int td) {
         ball.position = PLAYERZONE;
       }
     }
-  } else {
+  } else { //not restart ball
     float moveBy = ball.speed / 100.0;
-    for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
-        // The ball can only be returned by pushing the button in the players zone and if the ball passed the ring already
-      if (ball.currentLEDObject == players[i].side && ball.currentLEDObject == ball.direction_to && ball.position<=PLAYERZONE+0.5 && (players[i].button.down) && ringPassed) {
+  //for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
+      // The ball can only be returned by pushing the button in the players zone and if the ball passed the ring already
+      if (ball.currentLEDObject == players[ball.direction_to].side && ball.position<=PLAYERZONE+0.5 && (players[ball.direction_to].button.down) && ringPassed) {
         tone(BUZZER_PIN, 500);
         ringPassed = false;
         ringRoundRandomValue = random(0,maxRingRounds+1);
@@ -684,20 +745,20 @@ void updateBall(unsigned int td) {
         if(gameMode == 3 || gameMode == 4 || gameMode == 5 ) {
           ringDirection = random(0,2);
         }
-        nextAlivePlayer = getNextAlivePlayer(players[i].side);
-        Serial.print("nextAlivePlayer "+ nextAlivePlayer);  Serial.println(nextAlivePlayer); 
-        ball.direction_from = players[i].side;
+        nextAlivePlayer = getNextAlivePlayer(players[ball.direction_to].side);
+        //Serial.print("nextAlivePlayer "+ nextAlivePlayer);  Serial.println(nextAlivePlayer); 
+        ball.direction_from = ball.direction_to;
         ball.direction_to = players[nextAlivePlayer].side;
-        Serial.print("Returned from : ");
-        Serial.print(ball.direction_from);
-        Serial.print(" to: ");
-        Serial.println(ball.direction_to);
+        //Serial.print("Returned from : ");
+        //Serial.print(ball.direction_from);
+        //Serial.print(" to: ");
+        //Serial.println(ball.direction_to);
       }
-    }
-     Serial.print("Ball Position: ");
-     Serial.print(sides[ball.currentLEDObject]);
-     Serial.print(" - ");
-     Serial.println(ball.position);
+    //}
+     //Serial.print("Ball Position: ");
+     //Serial.print(sides[ball.currentLEDObject]);
+     //Serial.print(" - ");
+     //Serial.println(ball.position);
     
     if(ball.currentLEDObject==ball.direction_from && !ringPassed) { //ball is on the way back to the middle
       //Serial.print("back to the middle "); Serial.println(ball.position);
@@ -802,6 +863,11 @@ void setup() {
     maxRingRounds = 0;
     EEPROM.update(EEPROM_ADRESS_MAX_RING_ROUNDS, maxRingRounds);
   }
+  selfProbability = EEPROM.read(EEPROM_ADRESS_SELF_PROBABILITY);
+  if(selfProbability > 16) { //initial setting
+    selfProbability = 16;
+    EEPROM.update(EEPROM_ADRESS_SELF_PROBABILITY, selfProbability);
+  }
   initGameSettings();
 //Initialize players buttons and strips
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
@@ -872,6 +938,7 @@ void loop() {
         if(players[LEFT].lifes > 0 && players[LEFT].button.up) { //left player is alive and released the button first
           ball.direction_from = LEFT;
           ball.currentLEDObject = LEFT;
+          initPlayers();
           ball.direction_to = getNextAlivePlayer(LEFT);
           isRestartBall = true;
         } else if(players[UP].lifes > 0 && players[UP].button.up) { //upper player is alive and released the button first
@@ -894,7 +961,7 @@ void loop() {
         //Check if a new player joined or the first player released the button again
         for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
           if(alivePlayers == 1 && players[i].button.up && players[i].lifes > 0) { // if the only player that previously held the button down releases it, remove him
-            alivePlayers = alivePlayers - 1;
+            removeAlivePlayer(sides[i]);
             players[i].lifes = 0;
             Serial.println("All players left");
             if(i==LEFT) {
@@ -909,13 +976,15 @@ void loop() {
             }
           }
           if(players[i].button.down && players[i].lifes == 0) { // if player pressed the button just now, get him in the game
-            alivePlayers = alivePlayers + 1;
+            appendAlivePlayer(sides[i]);
             players[i].lifes = INITIAL_LIFES;
-            
             Serial.print("Added player: ");
             Serial.println(i);
             if(i!=LEFT) {
               menuActivationCounter = 0;
+              ledObjects[LEFT].setPixelColor(0,0,0,0);
+              ledObjects[LEFT].setPixelColor(1,0,0,0);
+              ledObjects[LEFT].show();
             }
           }
         }
