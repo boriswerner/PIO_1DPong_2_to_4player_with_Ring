@@ -25,6 +25,7 @@
 #define EEPROM_ADRESS_GAME_MODE 3
 #define EEPROM_ADRESS_MAX_RING_ROUNDS 4
 #define EEPROM_ADRESS_SELF_PROBABILITY 5
+#define EEPROM_ADRESS_SOUND 5
 
 #define INITIAL_LIFES 3
 #define NUMBER_OF_PLAYERS 4
@@ -230,6 +231,7 @@ byte maxRingRounds = 0;
 byte ringRoundRandomValue = 0;
 byte ringRoundCounter = 0;
 byte selfProbability = 16; // value of 1 means 1/2 chance that the ball returns to self, 5 means 1/6 chance
+bool soundActivated = true;
 
 // is the game in standby mode?
 byte currentStandby = 0;
@@ -248,11 +250,11 @@ void setAllTo(int ledNumber, uint32_t color) {
 
 void colorWipe(int ledNumber, uint32_t c, uint8_t wait) {
   for (uint16_t i = 0; i < ledObjects[ledNumber].numPixels(); i++) {
-    tone(BUZZER_PIN, 200 + (i*100));
+    if(soundActivated) tone(BUZZER_PIN, 200 + (i*100));
     ledObjects[ledNumber].setPixelColor(i, c);
     ledObjects[ledNumber].show();
     delay(wait);
-    noTone(BUZZER_PIN);
+    if(soundActivated) noTone(BUZZER_PIN);
   }
 }
 
@@ -303,11 +305,11 @@ void initPlayers()
 
 void drawPointLossAnimation(Player player)
 {
-  tone(BUZZER_PIN, 250);
+  if(soundActivated) tone(BUZZER_PIN, 250);
   setAllTo(player.side, led_ring.Color(BALL_BRIGHTNESS[brightness_control], BALL_BRIGHTNESS[brightness_control], BALL_BRIGHTNESS[brightness_control]));
   delay(100);
   setAllTo(player.side, led_ring.Color(0, 0, 0));
-  noTone(BUZZER_PIN);
+  if(soundActivated) noTone(BUZZER_PIN);
 }
 
 //------------------------
@@ -658,13 +660,32 @@ void drawMenu()
         , players[RIGHT].life_color.blue);
         ledObjects[MIDDLE].show();
     }
-  } else if(menuMode==7) {
+  } else if(menuMode==7) { // sound
+    byte soundActivatedRead = soundActivated ? 1 : 0;
+    if(players[UP].button.up){
+      soundActivatedRead==1 ? soundActivatedRead = 0 : soundActivatedRead = 1;
+    }
+    if(players[DOWN].button.up){
+      soundActivatedRead==1 ? soundActivatedRead = 0 : soundActivatedRead = 1;
+    }
+    for(byte i = 0; i < soundActivatedRead; i = i + 1) {
+      ledObjects[MIDDLE].setPixelColor(ledRingMenuWay[i]
+        , players[RIGHT].life_color.red
+        , players[RIGHT].life_color.green
+        , players[RIGHT].life_color.blue);
+        ledObjects[MIDDLE].show();
+    }
+    soundActivated = soundActivatedRead == 1 ? true : false;
+  }
+
+   else if(menuMode==8) {
     EEPROM.update(EEPROM_ADRESS_BRIGHTNESS, brightness_control);
     EEPROM.update(EEPROM_ADRESS_LOW_SPEED, low_speed);
     EEPROM.update(EEPROM_ADRESS_HIGH_SPEED, high_speed);
     EEPROM.update(EEPROM_ADRESS_GAME_MODE, gameMode);
     EEPROM.update(EEPROM_ADRESS_MAX_RING_ROUNDS, maxRingRounds);
     EEPROM.update(EEPROM_ADRESS_SELF_PROBABILITY, selfProbability);
+    EEPROM.update(EEPROM_ADRESS_SOUND, soundActivated ? 1 : 0);
     setAllTo(RIGHT, led_ring.Color(0, 0, 0));
     setAllTo(LEFT, led_ring.Color(0, 0, 0));
     setAllTo(MIDDLE, led_ring.Color(0, 0, 0));
@@ -714,7 +735,7 @@ void updateBall(unsigned int td) {
       //for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
           // The ball can only be started by pushing the button in the players zone 
         if (ball.currentLEDObject == players[ball.direction_from].side && ball.position<=PLAYERZONE+0.5 && players[ball.direction_from].button.up) {
-          tone(BUZZER_PIN, 500);
+          if(soundActivated) tone(BUZZER_PIN, 500);
           ringPassed = false;
           ringRoundRandomValue = random(0,maxRingRounds+1);
           ringRoundCounter = 0;
@@ -737,7 +758,7 @@ void updateBall(unsigned int td) {
   //for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
       // The ball can only be returned by pushing the button in the players zone and if the ball passed the ring already
       if (ball.currentLEDObject == players[ball.direction_to].side && ball.position<=PLAYERZONE+0.5 && (players[ball.direction_to].button.down) && ringPassed) {
-        tone(BUZZER_PIN, 500);
+        if(soundActivated) tone(BUZZER_PIN, 500);
         ringPassed = false;
         ringRoundRandomValue = random(0,maxRingRounds+1);
         ringRoundCounter = 0;
@@ -868,6 +889,13 @@ void setup() {
     selfProbability = 16;
     EEPROM.update(EEPROM_ADRESS_SELF_PROBABILITY, selfProbability);
   }
+  byte soundActivatedRead = EEPROM.read(EEPROM_ADRESS_SOUND);
+  if(soundActivatedRead > 1) { //initial setting
+    soundActivatedRead = 1;
+    EEPROM.update(EEPROM_ADRESS_SOUND, soundActivatedRead);
+  }
+  soundActivated = soundActivatedRead == 1 ? true : false;
+
   initGameSettings();
 //Initialize players buttons and strips
   for (byte i = 0; i < NUMBER_OF_PLAYERS; i = i + 1) {
@@ -904,7 +932,7 @@ void loop() {
     processInput();
     if (!quit)
     {
-      noTone(BUZZER_PIN);
+      if(soundActivated) noTone(BUZZER_PIN);
       updateBall(td);
       if (!quit) {
         drawGame();
